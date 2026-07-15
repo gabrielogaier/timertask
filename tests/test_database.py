@@ -48,6 +48,26 @@ class DatabaseTests(unittest.TestCase):
         self.db.remove_pending_record("record-1")
         self.assertEqual(self.db.pending_count(), 0)
 
+class AuditDatabaseTests(unittest.TestCase):
+    def test_audit_action_lifecycle(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            db = Database(Path(temporary) / "timertask.db")
+            action = {
+                "acao_id": "action-1",
+                "registro_id": "record-1",
+                "acao": "EXCLUIR",
+                "usuario_acao": "Teste",
+                "inicio": "2026-07-11 08:00:00",
+            }
+            db.add_audit_action(action)
+            self.assertEqual(db.audit_pending_count(), 1)
+            db.mark_audit_error("action-1", "Rede indisponível")
+            pending = db.list_audit_actions(pending_only=True)[0]
+            self.assertEqual(pending["status"], FAILED_STATUS)
+            db.mark_audit_synced("action-1")
+            self.assertEqual(db.audit_pending_count(), 0)
+            self.assertEqual(len(db.list_audit_actions()), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

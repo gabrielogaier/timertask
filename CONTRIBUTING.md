@@ -21,3 +21,5 @@ python -m compileall app.py database.py csv_store.py
 - Preserve a compatibilidade com CSVs já existentes.
 - Todo registro deve continuar usando UUID para evitar duplicação.
 - Alterações no formato do CSV devem incluir migração compatível e teste automatizado.
+
+- Preserve a compatibilidade dos CSVs mensais e de auditoria. Registros originais são imutáveis e exclusões devem continuar append-only.

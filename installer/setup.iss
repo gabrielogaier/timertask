@@ -1,6 +1,6 @@
 #define MyAppName "Timer Task"
-#define MyAppVersion "1.0.0"
-#define MyAppPublisher "Timer Task"
+#define MyAppVersion "1.1.0"
+#define MyAppPublisher "gabrielogaier"
 #define MyAppExeName "Timer Task.exe"
 
 [Setup]

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from PySide6.QtCore import QDate, QDateTime, QLockFile, QTimer, Qt
-from PySide6.QtGui import QAction, QCloseEvent, QIcon
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -40,7 +40,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from csv_store import append_record, read_records_for_date, test_write_access
+from csv_store import (
+    append_audit_action,
+    append_record,
+    apply_audit_actions,
+    read_records_for_date,
+    test_write_access,
+)
 from database import Database
 
 
@@ -308,19 +314,35 @@ class MainWindow(QMainWindow):
         self.history_date.setDisplayFormat("dd/MM/yyyy")
         self.history_date.dateChanged.connect(self.refresh_history)
         top.addWidget(self.history_date)
+
+        top.addWidget(QLabel("Exibir:"))
+        self.history_status_filter = QComboBox()
+        self.history_status_filter.addItems(["Ativos", "Excluídos", "Todos"])
+        self.history_status_filter.currentTextChanged.connect(
+            lambda _value: self.refresh_history()
+        )
+        top.addWidget(self.history_status_filter)
+
         refresh_button = QPushButton("Atualizar")
         refresh_button.clicked.connect(self.refresh_history)
         top.addWidget(refresh_button)
+        self.delete_history_button = QPushButton("Excluir registro")
+        self.delete_history_button.clicked.connect(self.delete_selected_history_record)
+        top.addWidget(self.delete_history_button)
         top.addStretch()
-        self.history_total_label = QLabel("Total: 00:00:00")
+        self.history_total_label = QLabel("Total válido: 00:00:00")
         top.addWidget(self.history_total_label)
         layout.addLayout(top)
 
-        headers = ["Início", "Fim", "Projeto", "Tipo", "Descrição", "Duração", "Origem", "Observação"]
+        headers = [
+            "Início", "Fim", "Projeto", "Tipo", "Descrição", "Duração",
+            "Origem", "Status", "Observação"
+        ]
         self.history_table = QTableWidget(0, len(headers))
         self.history_table.setHorizontalHeaderLabels(headers)
         self.history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.history_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.history_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.history_table.horizontalHeader().setStretchLastSection(True)
         self.history_table.setColumnWidth(0, 70)
         self.history_table.setColumnWidth(1, 70)
@@ -329,6 +351,8 @@ class MainWindow(QMainWindow):
         self.history_table.setColumnWidth(4, 220)
         self.history_table.setColumnWidth(5, 90)
         self.history_table.setColumnWidth(6, 80)
+        self.history_table.setColumnWidth(7, 90)
+        self.history_rows: list[dict[str, object]] = []
         layout.addWidget(self.history_table)
 
     def _build_catalog_tab(self) -> None:
@@ -406,19 +430,23 @@ class MainWindow(QMainWindow):
         self.log_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.pending_label)
 
-        pending_group = QGroupBox("Tasks aguardando registro no CSV")
+        pending_group = QGroupBox("Itens aguardando registro nos CSVs")
         pending_layout = QVBoxLayout(pending_group)
-        pending_headers = ["Projeto", "Tipo", "Origem", "Início", "Status", "Tentativas", "Último erro"]
+        pending_headers = [
+            "Item", "Projeto", "Tipo / ação", "Origem", "Início", "Status",
+            "Tentativas", "Último erro"
+        ]
         self.pending_table = QTableWidget(0, len(pending_headers))
         self.pending_table.setHorizontalHeaderLabels(pending_headers)
         self.pending_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.pending_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.pending_table.setColumnWidth(0, 130)
-        self.pending_table.setColumnWidth(1, 120)
-        self.pending_table.setColumnWidth(2, 75)
-        self.pending_table.setColumnWidth(3, 135)
-        self.pending_table.setColumnWidth(4, 80)
-        self.pending_table.setColumnWidth(5, 70)
+        self.pending_table.setColumnWidth(0, 85)
+        self.pending_table.setColumnWidth(1, 130)
+        self.pending_table.setColumnWidth(2, 120)
+        self.pending_table.setColumnWidth(3, 80)
+        self.pending_table.setColumnWidth(4, 135)
+        self.pending_table.setColumnWidth(5, 90)
+        self.pending_table.setColumnWidth(6, 75)
         self.pending_table.horizontalHeader().setStretchLastSection(True)
         pending_layout.addWidget(self.pending_table)
         layout.addWidget(pending_group)
@@ -851,37 +879,164 @@ class MainWindow(QMainWindow):
         selected_date = datetime(qdate.year(), qdate.month(), qdate.day())
         try:
             rows = read_records_for_date(base_folder, user_name, selected_date)
+            local_actions = [item["data"] for item in self.db.list_audit_actions()]
+            rows = apply_audit_actions(rows, local_actions)
             self.connection_label.setText("")
         except Exception as exc:
             rows = []
             self.connection_label.setText(f"Pasta compartilhada indisponível: {exc}")
 
-        self.history_table.setRowCount(len(rows))
-        total_seconds = 0
-        for row_index, row in enumerate(rows):
-            start_text = self._time_part(row.get("inicio", ""))
-            end_text = self._time_part(row.get("fim", ""))
+        valid_total_seconds = 0
+        for row in rows:
+            if str(row.get("excluido", "0")) != "1":
+                try:
+                    valid_total_seconds += int(row.get("duracao_segundos", "0"))
+                except (ValueError, TypeError):
+                    pass
+
+        selected_status = self.history_status_filter.currentText()
+        if selected_status == "Ativos":
+            visible_rows = [row for row in rows if str(row.get("excluido", "0")) != "1"]
+        elif selected_status == "Excluídos":
+            visible_rows = [row for row in rows if str(row.get("excluido", "0")) == "1"]
+        else:
+            visible_rows = rows
+
+        self.history_rows = visible_rows
+        self.history_table.setRowCount(len(visible_rows))
+        red_background = QColor("#FEE4E2")
+        red_text = QColor("#B42318")
+        for row_index, row in enumerate(visible_rows):
+            deleted = str(row.get("excluido", "0")) == "1"
+            observation = str(row.get("observacao", ""))
+            if deleted:
+                audit_note = (
+                    f"Excluído por {row.get('usuario_exclusao', '')} em "
+                    f"{row.get('data_exclusao', '')}. Motivo: {row.get('motivo_exclusao', '')}"
+                ).strip()
+                observation = f"{observation} | {audit_note}" if observation else audit_note
             values = [
-                start_text,
-                end_text,
+                self._time_part(str(row.get("inicio", ""))),
+                self._time_part(str(row.get("fim", ""))),
                 row.get("projeto", ""),
                 row.get("tipo_atividade", ""),
                 row.get("descricao", ""),
                 row.get("duracao_formatada", ""),
                 row.get("origem_registro", "") or "TIMER",
-                row.get("observacao", ""),
+                "EXCLUÍDO" if deleted else "ATIVO",
+                observation,
             ]
             for column, value in enumerate(values):
-                self.history_table.setItem(row_index, column, QTableWidgetItem(str(value)))
-            try:
-                total_seconds += int(row.get("duracao_segundos", "0"))
-            except ValueError:
-                pass
+                item = QTableWidgetItem(str(value))
+                if deleted:
+                    item.setBackground(red_background)
+                    item.setForeground(red_text)
+                self.history_table.setItem(row_index, column, item)
 
-        self.history_total_label.setText(f"Total: {format_duration(total_seconds)}")
+        self.history_total_label.setText(
+            f"Total válido: {format_duration(valid_total_seconds)}"
+        )
         if selected_date.date() == datetime.now().date():
-            self.today_total_label.setText(f"Total registrado hoje: {format_duration(total_seconds)}")
+            self.today_total_label.setText(
+                f"Total registrado hoje: {format_duration(valid_total_seconds)}"
+            )
         self.update_pending_status()
+
+    def delete_selected_history_record(self) -> None:
+        row_index = self.history_table.currentRow()
+        if row_index < 0 or row_index >= len(self.history_rows):
+            QMessageBox.information(self, "Excluir registro", "Selecione um registro no histórico.")
+            return
+
+        row = self.history_rows[row_index]
+        if str(row.get("excluido", "0")) == "1":
+            QMessageBox.information(
+                self,
+                "Excluir registro",
+                "Esse registro já está excluído e permanece visível para auditoria.",
+            )
+            return
+
+        reason, accepted = QInputDialog.getMultiLineText(
+            self,
+            "Motivo da exclusão",
+            "Informe por que este registro deve deixar de contabilizar horas:",
+        )
+        reason = reason.strip()
+        if not accepted:
+            return
+        if not reason:
+            QMessageBox.warning(self, "Excluir registro", "O motivo da exclusão é obrigatório.")
+            return
+
+        summary = (
+            f"Projeto: {row.get('projeto', '')}\n"
+            f"Tipo: {row.get('tipo_atividade', '')}\n"
+            f"Início: {row.get('inicio', '')}\n"
+            f"Fim: {row.get('fim', '')}\n"
+            f"Duração: {row.get('duracao_formatada', '')}\n\n"
+            "O registro original será preservado, mas deixará de contabilizar horas."
+        )
+        answer = QMessageBox.question(
+            self,
+            "Confirmar exclusão",
+            summary,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        user_name = self.db.get_setting("user_name").strip()
+        if not user_name:
+            QMessageBox.warning(
+                self,
+                "Excluir registro",
+                "Configure o nome do usuário antes de excluir um registro.",
+            )
+            return
+        action = {
+            "acao_id": str(uuid.uuid4()),
+            "registro_id": str(row.get("registro_id", "")),
+            "acao": "EXCLUIR",
+            "data_hora_acao": datetime.now().replace(microsecond=0).isoformat(sep=" "),
+            "usuario_acao": user_name,
+            "usuario_registro": row.get("usuario", "") or user_name,
+            "motivo": reason,
+            "computador": socket.gethostname(),
+            "projeto": row.get("projeto", ""),
+            "tipo_atividade": row.get("tipo_atividade", ""),
+            "descricao": row.get("descricao", ""),
+            "inicio": row.get("inicio", ""),
+            "fim": row.get("fim", ""),
+            "duracao_segundos": row.get("duracao_segundos", "0"),
+            "duracao_formatada": row.get("duracao_formatada", ""),
+            "origem_registro": row.get("origem_registro", "") or "TIMER",
+            "observacao": row.get("observacao", ""),
+            "data_registro": row.get("data_registro", ""),
+        }
+
+        try:
+            self.db.add_audit_action(action)
+            base_folder = self.db.get_setting("base_folder").strip()
+            try:
+                append_audit_action(base_folder, action)
+                self.db.mark_audit_synced(action["acao_id"])
+                message = "Registro excluído da contabilização e gravado na auditoria."
+            except Exception as exc:
+                self.db.mark_audit_error(action["acao_id"], str(exc))
+                logging.warning("Exclusão mantida localmente para sincronização: %s", exc)
+                message = (
+                    "O registro deixou de contabilizar neste computador, mas a ação de exclusão "
+                    "ainda não foi gravada na pasta compartilhada. Use Registrar Tasks."
+                )
+        except Exception as exc:
+            logging.exception("Falha ao registrar exclusão")
+            QMessageBox.critical(self, "Excluir registro", f"Não foi possível registrar a exclusão:\n{exc}")
+            return
+
+        self.refresh_history()
+        self.update_pending_status()
+        QMessageBox.information(self, "Excluir registro", message)
 
     @staticmethod
     def _time_part(value: str) -> str:
@@ -891,7 +1046,7 @@ class MainWindow(QMainWindow):
             return value
 
     def register_pending_records(self, show_result: bool = False) -> None:
-        """Registra manualmente no CSV as tasks pendentes, sem duplicar linhas existentes."""
+        """Sincroniza tasks e ações de auditoria pendentes de forma idempotente."""
         base_folder = self.db.get_setting("base_folder").strip()
         if not base_folder:
             self.update_pending_status()
@@ -899,18 +1054,19 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(
                     self,
                     "Registrar Tasks",
-                    "Configure a pasta-base dos CSVs antes de registrar as tasks.",
+                    "Configure a pasta-base dos CSVs antes de registrar os itens pendentes.",
                 )
             return
 
         pending_records = self.db.list_pending_records()
-        if not pending_records:
+        pending_actions = self.db.list_audit_actions(pending_only=True)
+        if not pending_records and not pending_actions:
             self.update_pending_status()
             if show_result:
                 QMessageBox.information(
                     self,
                     "Registrar Tasks",
-                    "Não há tasks pendentes para registrar.",
+                    "Não há tasks ou ações de auditoria pendentes.",
                 )
             return
 
@@ -918,18 +1074,25 @@ class MainWindow(QMainWindow):
         failed = 0
         for pending in pending_records:
             try:
-                # append_record verifica o registro_id dentro do CSV. Caso uma tentativa
-                # anterior tenha gravado a linha e falhado antes de atualizar o SQLite,
-                # esta nova tentativa não cria uma duplicata.
                 append_record(base_folder, pending["data"])
                 self.db.remove_pending_record(pending["record_id"])
                 registered += 1
             except Exception as exc:
                 self.db.mark_pending_error(pending["record_id"], str(exc))
                 failed += 1
+                logging.warning("Task %s não registrada no CSV: %s", pending["record_id"], exc)
+
+        for pending in pending_actions:
+            try:
+                append_audit_action(base_folder, pending["data"])
+                self.db.mark_audit_synced(pending["action_id"])
+                registered += 1
+            except Exception as exc:
+                self.db.mark_audit_error(pending["action_id"], str(exc))
+                failed += 1
                 logging.warning(
-                    "Task %s não registrada no CSV: %s",
-                    pending["record_id"],
+                    "Ação de auditoria %s não registrada no CSV: %s",
+                    pending["action_id"],
                     exc,
                 )
 
@@ -942,39 +1105,43 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(
                     self,
                     "Registrar Tasks",
-                    f"{registered} task(s) registrada(s) com sucesso.",
+                    f"{registered} item(ns) registrado(s) com sucesso.",
                 )
             elif registered and failed:
                 QMessageBox.warning(
                     self,
                     "Registrar Tasks",
-                    f"{registered} task(s) registrada(s) e {failed} permaneceram com falha.",
+                    f"{registered} item(ns) registrado(s) e {failed} permaneceram com falha.",
                 )
             else:
                 QMessageBox.warning(
                     self,
                     "Registrar Tasks",
-                    "Nenhuma task foi registrada. Os registros continuam seguros no "
-                    "SQLite com status Falha. Verifique a pasta compartilhada.",
+                    "Nenhum item foi registrado. Os dados continuam seguros no SQLite com status Falha.",
                 )
 
     def update_pending_status(self) -> None:
-        pending = self.db.list_pending_records()
-        count = len(pending)
-        failed = sum(1 for item in pending if item.get("status") == "FALHA")
+        pending_records = self.db.list_pending_records()
+        pending_actions = self.db.list_audit_actions(pending_only=True)
+        count = len(pending_records) + len(pending_actions)
+        failed = sum(1 for item in pending_records if item.get("status") == "FALHA")
+        failed += sum(1 for item in pending_actions if item.get("status") == "FALHA")
 
         self.pending_label.setText(
-            f"Tasks aguardando registro: {count} | Com falha: {failed}"
+            f"Itens aguardando registro: {count} | Com falha: {failed}"
         )
-        self.timer_pending_label.setText(f"Tasks pendentes: {count}")
+        self.timer_pending_label.setText(f"Itens pendentes: {count}")
         self.register_tasks_button.setEnabled(count > 0)
 
-        self.pending_table.setRowCount(count)
-        for row_index, item in enumerate(pending):
-            data = item["data"]
+        table_items: list[tuple[str, dict[str, object], dict[str, object]]] = []
+        table_items.extend(("TASK", item, item["data"]) for item in pending_records)
+        table_items.extend(("EXCLUSÃO", item, item["data"]) for item in pending_actions)
+        self.pending_table.setRowCount(len(table_items))
+        for row_index, (item_type, item, data) in enumerate(table_items):
             values = [
+                item_type,
                 data.get("projeto", ""),
-                data.get("tipo_atividade", ""),
+                data.get("tipo_atividade", "") if item_type == "TASK" else data.get("acao", "EXCLUIR"),
                 data.get("origem_registro", "") or "TIMER",
                 data.get("inicio", ""),
                 item.get("status", "PENDENTE"),
@@ -982,14 +1149,14 @@ class MainWindow(QMainWindow):
                 item.get("last_error", ""),
             ]
             for column, value in enumerate(values):
-                self.pending_table.setItem(
-                    row_index, column, QTableWidgetItem(str(value))
-                )
+                cell = QTableWidgetItem(str(value))
+                if item_type == "EXCLUSÃO":
+                    cell.setBackground(QColor("#FEE4E2"))
+                    cell.setForeground(QColor("#B42318"))
+                self.pending_table.setItem(row_index, column, cell)
 
         if count:
-            self.connection_label.setText(
-                f"{count} task(s) aguardando registro no CSV"
-            )
+            self.connection_label.setText(f"{count} item(ns) aguardando registro nos CSVs")
         elif not self.connection_label.text().startswith("Pasta compartilhada"):
             self.connection_label.setText("")
 

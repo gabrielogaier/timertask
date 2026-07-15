@@ -11,7 +11,9 @@ Aplicativo Windows simples para registrar tempo por projeto e tipo de atividade,
 - registros pendentes mantidos no SQLite em caso de falha de rede;
 - botão **Registrar Tasks** para reenviar pendências manualmente;
 - UUID permanente para impedir linhas duplicadas no CSV;
-- histórico diário e total de tempo;
+- histórico diário com filtros de registros ativos, excluídos e todos;
+- exclusão lógica com motivo obrigatório e trilha de auditoria;
+- total de tempo calculado somente com registros ativos;
 - ícone na bandeja do Windows;
 - geração de executável e instalador por arquivos `.bat`.
 
@@ -24,9 +26,12 @@ Timer Task
 │   ├── projetos
 │   ├── tipos de atividade
 │   ├── timer ativo
-│   └── registros pendentes
+│   ├── registros pendentes
+│   └── ações de auditoria pendentes ou sincronizadas
 └── Pasta definida pelo usuário
-    └── registros\<usuario>\AAAA-MM.csv
+    └── registros\<usuario>\
+        ├── AAAA-MM.csv
+        └── auditoria\AAAA-MM.csv
 ```
 
 O SQLite não deve ser colocado em pasta de rede. Apenas os CSVs concluídos ficam no local compartilhado.
@@ -39,6 +44,21 @@ A coluna `origem_registro` permite distinguir:
 - `MANUAL`: atividade inserida pela tela de registro manual.
 
 A estrutura completa está em [docs/CSV_SCHEMA.md](docs/CSV_SCHEMA.md).
+
+## Exclusão com auditoria
+
+O Timer Task permite excluir logicamente um registro criado pelo próprio usuário na aba **Histórico**. A exclusão não remove nem altera a linha original do CSV mensal.
+
+Ao excluir:
+
+- o motivo é obrigatório;
+- o registro deixa de entrar nos totais;
+- o registro continua visível pelos filtros **Excluídos** e **Todos**;
+- a linha recebe destaque discreto em vermelho;
+- uma ação `EXCLUIR` é acrescentada ao CSV de auditoria;
+- se a pasta estiver indisponível, a ação permanece no SQLite e pode ser enviada por **Registrar Tasks**.
+
+O aplicativo acessa somente a pasta correspondente ao nome de usuário configurado. A leitura de vários usuários e o dashboard gerencial pertencem ao produto separado **Timer Task Master**.
 
 ## Executar o código-fonte
 
@@ -113,6 +133,7 @@ O aplicativo não possui telemetria, serviço em nuvem ou envio automático de d
 ## Autoria
 
 Desenvolvido por **gabrielogaier**.
+
 ## Licença
 
 Distribuído sob a licença MIT. Consulte [LICENSE](LICENSE).

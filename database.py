@@ -20,6 +20,7 @@ DEFAULT_ACTIVITY_TYPES = [
 
 PENDING_STATUS = "PENDENTE"
 FAILED_STATUS = "FALHA"
+SYNCED_STATUS = "SINCRONIZADO"
 
 
 class Database:
@@ -84,6 +85,22 @@ class Database:
                     status TEXT NOT NULL DEFAULT 'PENDENTE',
                     last_attempt_at TEXT NOT NULL DEFAULT ''
                 );
+
+                CREATE TABLE IF NOT EXISTS audit_actions (
+                    action_id TEXT PRIMARY KEY,
+                    record_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    data_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'PENDENTE',
+                    last_attempt_at TEXT NOT NULL DEFAULT '',
+                    synced_at TEXT NOT NULL DEFAULT ''
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_audit_actions_record_id
+                ON audit_actions(record_id);
                 """
             )
             self._migrate_pending_records(connection)
@@ -309,3 +326,99 @@ class Database:
                     "SELECT COUNT(*) FROM pending_records WHERE status = ?", (FAILED_STATUS,)
                 ).fetchone()[0]
             )
+    def add_audit_action(self, action: dict[str, Any]) -> None:
+        """Mantém a ação de exclusão localmente, inclusive após sincronizar."""
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO audit_actions(
+                    action_id, record_id, action, data_json, created_at, attempts,
+                    last_error, status, last_attempt_at, synced_at
+                ) VALUES (?, ?, ?, ?, ?, 0, '', ?, '', '')
+                ON CONFLICT(action_id) DO UPDATE SET
+                    data_json = excluded.data_json,
+                    record_id = excluded.record_id,
+                    action = excluded.action
+                """,
+                (
+                    action["acao_id"],
+                    action["registro_id"],
+                    str(action.get("acao") or "EXCLUIR").upper(),
+                    json.dumps(action, ensure_ascii=False),
+                    self.now_text(),
+                    PENDING_STATUS,
+                ),
+            )
+
+    def list_audit_actions(self, pending_only: bool = False) -> list[dict[str, Any]]:
+        query = (
+            "SELECT action_id, record_id, action, data_json, created_at, attempts, "
+            "last_error, status, last_attempt_at, synced_at FROM audit_actions"
+        )
+        params: tuple[Any, ...] = ()
+        if pending_only:
+            query += " WHERE status <> ?"
+            params = (SYNCED_STATUS,)
+        query += " ORDER BY created_at, action_id"
+        with self.connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [
+            {
+                "action_id": row["action_id"],
+                "record_id": row["record_id"],
+                "action": row["action"],
+                "data": json.loads(row["data_json"]),
+                "created_at": row["created_at"],
+                "attempts": row["attempts"],
+                "last_error": row["last_error"],
+                "status": row["status"],
+                "last_attempt_at": row["last_attempt_at"],
+                "synced_at": row["synced_at"],
+            }
+            for row in rows
+        ]
+
+    def mark_audit_error(self, action_id: str, error: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE audit_actions
+                SET attempts = attempts + 1,
+                    last_error = ?,
+                    status = ?,
+                    last_attempt_at = ?
+                WHERE action_id = ?
+                """,
+                (error[:1000], FAILED_STATUS, self.now_text(), action_id),
+            )
+
+    def mark_audit_synced(self, action_id: str) -> None:
+        now = self.now_text()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE audit_actions
+                SET status = ?, last_error = '', last_attempt_at = ?, synced_at = ?
+                WHERE action_id = ?
+                """,
+                (SYNCED_STATUS, now, now, action_id),
+            )
+
+    def audit_pending_count(self) -> int:
+        with self.connect() as connection:
+            return int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM audit_actions WHERE status <> ?",
+                    (SYNCED_STATUS,),
+                ).fetchone()[0]
+            )
+
+    def audit_failed_count(self) -> int:
+        with self.connect() as connection:
+            return int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM audit_actions WHERE status = ?",
+                    (FAILED_STATUS,),
+                ).fetchone()[0]
+            )
+
