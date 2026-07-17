@@ -24,6 +24,52 @@ class UiSmokeTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.qt_app = QApplication.instance() or QApplication([])
 
+    def test_timer_tab_refreshes_total_for_current_date(self) -> None:
+        from app import MainWindow
+        from csv_store import append_record
+        from database import Database
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            csv_base = root / "base"
+            today = QDate.currentDate()
+            today_text = today.toString("yyyy-MM-dd")
+            db = Database(root / "timertask.db")
+            db.set_setting("user_name", "Usuário Teste")
+            db.set_setting("base_folder", str(csv_base))
+            append_record(
+                str(csv_base),
+                {
+                    "registro_id": "today-total-ui-1",
+                    "usuario": "Usuário Teste",
+                    "origem_registro": "TIMER",
+                    "projeto": "Projeto UI",
+                    "tipo_atividade": "Teste",
+                    "descricao": "Registro de hoje",
+                    "inicio": f"{today_text} 08:00:00",
+                    "fim": f"{today_text} 08:01:30",
+                    "duracao_segundos": 90,
+                    "duracao_formatada": "00:01:30",
+                    "observacao": "",
+                    "computador": "PC",
+                    "data_registro": f"{today_text} 08:01:30",
+                },
+            )
+            window = MainWindow(db)
+            window.tabs.setCurrentWidget(window.manual_tab)
+            window.history_date.setDate(today.addDays(-1))
+            window.today_total_label.setText("Total registrado hoje: 06:22:27")
+
+            window.tabs.setCurrentWidget(window.timer_tab)
+
+            self.assertEqual(window.history_date.date(), today)
+            self.assertEqual(
+                window.today_total_label.text(),
+                "Total registrado hoje: 00:01:30",
+            )
+            window.force_quit = True
+            window.close()
+
     def test_delete_preserves_original_and_creates_audit(self) -> None:
         from app import MainWindow
         from csv_store import append_record
