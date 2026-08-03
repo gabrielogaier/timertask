@@ -70,6 +70,79 @@ class UiSmokeTests(unittest.TestCase):
             window.force_quit = True
             window.close()
 
+    def test_double_click_opens_complete_history_details(self) -> None:
+        from app import HistoryDetailsDialog, MainWindow
+        from csv_store import append_record
+        from database import Database
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            csv_base = root / "base"
+            db = Database(root / "timertask.db")
+            db.set_setting("user_name", "Usuário Teste")
+            db.set_setting("base_folder", str(csv_base))
+            append_record(
+                str(csv_base),
+                {
+                    "registro_id": "history-details-1",
+                    "usuario": "Usuário Teste",
+                    "origem_registro": "MANUAL",
+                    "projeto": "Projeto Detalhes",
+                    "tipo_atividade": "Documentação",
+                    "descricao": "Descrição completa da atividade",
+                    "inicio": "2026-08-03 08:00:00",
+                    "fim": "2026-08-03 09:15:00",
+                    "duracao_segundos": 4500,
+                    "duracao_formatada": "01:15:00",
+                    "observacao": "Observação completa do registro",
+                    "computador": "PC-DETALHES",
+                    "data_registro": "2026-08-03 09:15:01",
+                },
+            )
+            window = MainWindow(db)
+            window.history_date.setDate(QDate(2026, 8, 3))
+            window.refresh_history()
+
+            dialog = HistoryDetailsDialog(window.history_rows[0])
+            self.assertEqual(
+                set(dialog.value_labels),
+                {key for key, _label in HistoryDetailsDialog.DETAIL_FIELDS},
+            )
+            self.assertEqual(dialog.value_labels["status"].text(), "ATIVO")
+            self.assertEqual(
+                dialog.value_labels["descricao"].text(),
+                "Descrição completa da atividade",
+            )
+            self.assertEqual(
+                dialog.value_labels["observacao"].text(),
+                "Observação completa do registro",
+            )
+            dialog.close()
+
+            deleted_dialog = HistoryDetailsDialog(
+                {
+                    **window.history_rows[0],
+                    "excluido": "1",
+                    "usuario_exclusao": "Gestor Teste",
+                    "data_exclusao": "2026-08-03 10:00:00",
+                    "motivo_exclusao": "Registro duplicado",
+                    "acao_id_exclusao": "audit-details-1",
+                }
+            )
+            self.assertEqual(deleted_dialog.value_labels["status"].text(), "EXCLUÍDO")
+            self.assertEqual(
+                deleted_dialog.value_labels["motivo_exclusao"].text(),
+                "Registro duplicado",
+            )
+            deleted_dialog.close()
+
+            with patch.object(HistoryDetailsDialog, "exec", return_value=0) as modal_exec:
+                window.history_table.cellDoubleClicked.emit(0, 4)
+            modal_exec.assert_called_once_with()
+
+            window.force_quit = True
+            window.close()
+
     def test_delete_preserves_original_and_creates_audit(self) -> None:
         from app import MainWindow
         from csv_store import append_record
