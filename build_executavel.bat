@@ -24,14 +24,14 @@ if not exist ".venv-build\Scripts\python.exe" (
 
 set "BUILD_PYTHON=%CD%\.venv-build\Scripts\python.exe"
 
-"%BUILD_PYTHON%" -c "import PyInstaller, PySide6, shiboken6; from PySide6 import QtCore; assert PySide6.__version__ == shiboken6.__version__" >nul 2>&1
+"%BUILD_PYTHON%" -c "import PyInstaller, PySide6, shiboken6; from PySide6 import QtCore; assert PySide6.__version__ == '6.8.3'; assert PySide6.__version__ == shiboken6.__version__" >nul 2>&1
 if errorlevel 1 (
     echo Reparando ferramentas de compilacao e bibliotecas Qt...
     "%BUILD_PYTHON%" -m pip install --upgrade pip
     if errorlevel 1 goto :error
     "%BUILD_PYTHON%" -m pip install --upgrade --force-reinstall --no-cache-dir -r requirements.txt -r requirements-build.txt
     if errorlevel 1 goto :error
-    "%BUILD_PYTHON%" -c "import PyInstaller, PySide6, shiboken6; from PySide6 import QtCore; assert PySide6.__version__ == shiboken6.__version__"
+    "%BUILD_PYTHON%" -c "import PyInstaller, PySide6, shiboken6; from PySide6 import QtCore; assert PySide6.__version__ == '6.8.3'; assert PySide6.__version__ == shiboken6.__version__"
     if errorlevel 1 goto :error
 )
 
@@ -69,8 +69,6 @@ echo Criando executavel do Timer Task...
     --windowed ^
     --name "Timer Task" ^
     --icon "%BUILD_ICON%" ^
-    --collect-all PySide6 ^
-    --collect-all shiboken6 ^
     --add-data "icons;icons" ^
     --version-file "installer\version_info.txt" ^
     "app.py"
