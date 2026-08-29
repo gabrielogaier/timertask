@@ -1,6 +1,6 @@
 # Timer Task
 
-Aplicativo Windows simples para registrar tempo por projeto e tipo de atividade, com armazenamento local em SQLite e exportação dos registros concluídos para arquivos CSV em uma pasta escolhida pelo usuário.
+Aplicativo Windows simples para registrar tempo por projeto e tipo de atividade. O SQLite local é a fonte oficial e permanente dos registros; os CSVs são cópias sincronizadas para consulta e relatórios no Timer Task Master.
 
 ## Principais recursos
 
@@ -9,7 +9,8 @@ Aplicativo Windows simples para registrar tempo por projeto e tipo de atividade,
 - projetos e tipos de atividade armazenados localmente;
 - recuperação do timer após fechamento ou reinicialização;
 - registros pendentes mantidos no SQLite em caso de falha de rede;
-- botão **Registrar Tasks** para reenviar pendências manualmente;
+- botão **Registrar Tasks** para reenviar tasks pendentes ou com falha manualmente;
+- importação de CSVs históricos e reconstrução idempotente dos CSVs a partir do SQLite;
 - UUID permanente para impedir linhas duplicadas no CSV;
 - histórico diário com filtros de registros ativos, excluídos e todos;
 - exclusão lógica com motivo obrigatório e trilha de auditoria;
@@ -34,7 +35,7 @@ Timer Task
         └── auditoria\AAAA-MM.csv
 ```
 
-O SQLite não deve ser colocado em pasta de rede. Apenas os CSVs concluídos ficam no local compartilhado.
+O SQLite não deve ser colocado em pasta de rede. Ele mantém todo o histórico, inclusive após uma sincronização bem-sucedida; apenas os CSVs ficam no local compartilhado e podem ser reconstruídos pelo botão **Reconstruir CSVs**.
 
 ## Origem dos registros
 

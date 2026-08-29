@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-from csv_store import append_record, monthly_csv_path, read_records_for_date
+from csv_store import append_record, monthly_csv_path, read_all_records, read_records_for_date
 
 
 class CsvStoreTests(unittest.TestCase):
@@ -62,6 +62,11 @@ class CsvStoreTests(unittest.TestCase):
         self.assertEqual(path.name, "2026-07.csv")
         self.assertEqual(path.parent.name, "Usuário_Teste")
         self.assertEqual(path.parent.parent.name, "registros")
+
+    def test_read_all_records_imports_monthly_csvs_only(self) -> None:
+        append_record(self.base_folder, self.record)
+        rows = read_all_records(self.base_folder, self.record["usuario"])
+        self.assertEqual([row["registro_id"] for row in rows], ["fixed-uuid"])
 
 class CsvAuditTests(unittest.TestCase):
     def setUp(self) -> None:

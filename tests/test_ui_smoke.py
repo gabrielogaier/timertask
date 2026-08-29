@@ -37,9 +37,7 @@ class UiSmokeTests(unittest.TestCase):
             db = Database(root / "timertask.db")
             db.set_setting("user_name", "Usuário Teste")
             db.set_setting("base_folder", str(csv_base))
-            append_record(
-                str(csv_base),
-                {
+            record = {
                     "registro_id": "today-total-ui-1",
                     "usuario": "Usuário Teste",
                     "origem_registro": "TIMER",
@@ -53,8 +51,10 @@ class UiSmokeTests(unittest.TestCase):
                     "observacao": "",
                     "computador": "PC",
                     "data_registro": f"{today_text} 08:01:30",
-                },
-            )
+            }
+            append_record(str(csv_base), record)
+            db.add_task_record(record)
+            db.mark_task_synced(record["registro_id"])
             window = MainWindow(db)
             window.tabs.setCurrentWidget(window.manual_tab)
             window.history_date.setDate(today.addDays(-1))
@@ -81,9 +81,7 @@ class UiSmokeTests(unittest.TestCase):
             db = Database(root / "timertask.db")
             db.set_setting("user_name", "Usuário Teste")
             db.set_setting("base_folder", str(csv_base))
-            append_record(
-                str(csv_base),
-                {
+            record = {
                     "registro_id": "history-details-1",
                     "usuario": "Usuário Teste",
                     "origem_registro": "MANUAL",
@@ -97,8 +95,10 @@ class UiSmokeTests(unittest.TestCase):
                     "observacao": "Observação completa do registro",
                     "computador": "PC-DETALHES",
                     "data_registro": "2026-08-03 09:15:01",
-                },
-            )
+            }
+            append_record(str(csv_base), record)
+            db.add_task_record(record)
+            db.mark_task_synced(record["registro_id"])
             window = MainWindow(db)
             window.history_date.setDate(QDate(2026, 8, 3))
             window.refresh_history()
@@ -170,6 +170,8 @@ class UiSmokeTests(unittest.TestCase):
                 "data_registro": "2026-07-13 14:00:00",
             }
             original_path = append_record(str(csv_base), record)
+            db.add_task_record(record)
+            db.mark_task_synced(record["registro_id"])
             window = MainWindow(db)
             window.history_date.setDate(QDate(2026, 7, 13))
             window.refresh_history()
