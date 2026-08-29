@@ -75,8 +75,14 @@ class DatabaseTests(unittest.TestCase):
         migrated = Database(db_path)
         self.assertEqual(len(migrated.list_task_records()), 1)
         self.assertEqual(migrated.list_task_records()[0]["status"], FAILED_STATUS)
-        with sqlite3.connect(db_path) as connection:
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM pending_records").fetchone()[0], 1)
+        verification_connection = sqlite3.connect(db_path)
+        try:
+            self.assertEqual(
+                verification_connection.execute("SELECT COUNT(*) FROM pending_records").fetchone()[0],
+                1,
+            )
+        finally:
+            verification_connection.close()
 
     def test_import_ignores_existing_record_ids(self) -> None:
         record = {"registro_id": "csv-1", "usuario": "Teste", "inicio": "2026-08-01 09:00:00"}
