@@ -54,7 +54,8 @@ class DatabaseTests(unittest.TestCase):
 
     def test_pending_records_are_migrated_without_deletion(self) -> None:
         db_path = Path(self.temp_dir.name) / "legacy.db"
-        with sqlite3.connect(db_path) as connection:
+        connection = sqlite3.connect(db_path)
+        try:
             connection.execute(
                 """
                 CREATE TABLE pending_records (
@@ -68,6 +69,9 @@ class DatabaseTests(unittest.TestCase):
                 "INSERT INTO pending_records VALUES (?, ?, ?, 2, ?, 'FALHA', ?)",
                 ("legacy-1", '{"registro_id":"legacy-1","usuario":"Teste"}', "2026-08-01 10:00:00", "Rede", "2026-08-01 10:01:00"),
             )
+            connection.commit()
+        finally:
+            connection.close()
         migrated = Database(db_path)
         self.assertEqual(len(migrated.list_task_records()), 1)
         self.assertEqual(migrated.list_task_records()[0]["status"], FAILED_STATUS)
