@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 1, 0, 0),
-    prodvers=(1, 1, 0, 0),
+    filevers=(1, 1, 1, 0),
+    prodvers=(1, 1, 1, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -16,12 +16,12 @@ VSVersionInfo(
         [
           StringStruct(u'CompanyName', u'gabrielogaier'),
           StringStruct(u'FileDescription', u'Timer Task'),
-          StringStruct(u'FileVersion', u'1.1.0'),
+          StringStruct(u'FileVersion', u'1.1.1'),
           StringStruct(u'InternalName', u'Timer Task'),
           StringStruct(u'LegalCopyright', u'gabrielogaier'),
           StringStruct(u'OriginalFilename', u'Timer Task.exe'),
           StringStruct(u'ProductName', u'Timer Task'),
-          StringStruct(u'ProductVersion', u'1.1.0')
+          StringStruct(u'ProductVersion', u'1.1.1')
         ]
       )
     ]),
