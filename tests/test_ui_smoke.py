@@ -143,6 +143,45 @@ class UiSmokeTests(unittest.TestCase):
             window.force_quit = True
             window.close()
 
+    def test_completed_record_is_saved_locally_without_network_access(self) -> None:
+        from app import MainWindow
+        from database import Database
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            db = Database(root / "timertask.db")
+            db.set_setting("user_name", "Usuário Teste")
+            db.set_setting("base_folder", r"\\servidor-offline\registros")
+            window = MainWindow(db)
+            record = {
+                "registro_id": "offline-save-1",
+                "usuario": "Usuário Teste",
+                "origem_registro": "MANUAL",
+                "projeto": "Projeto Offline",
+                "tipo_atividade": "Teste",
+                "descricao": "Salvar sem rede",
+                "inicio": "2026-08-03 08:00:00",
+                "fim": "2026-08-03 09:00:00",
+                "duracao_segundos": 3600,
+                "duracao_formatada": "01:00:00",
+                "observacao": "",
+                "computador": "PC",
+                "data_registro": "2026-08-03 09:00:00",
+            }
+
+            with patch("app.append_record") as append_record:
+                result = window._persist_completed_record(record)
+
+            self.assertIsNone(result)
+            append_record.assert_not_called()
+            pending = db.list_task_records(pending_only=True)
+            self.assertEqual(len(pending), 1)
+            self.assertEqual(pending[0]["record_id"], "offline-save-1")
+            self.assertEqual(pending[0]["status"], "PENDENTE")
+            self.assertEqual(pending[0]["attempts"], 0)
+            window.force_quit = True
+            window.close()
+
     def test_delete_preserves_original_and_creates_audit(self) -> None:
         from app import MainWindow
         from csv_store import append_record
