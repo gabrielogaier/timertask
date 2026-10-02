@@ -42,6 +42,9 @@ from PySide6.QtWidgets import (
 )
 
 
+from dashboard import DashboardMixin
+
+
 class CatalogComboBox(QComboBox):
     """Campo de catálogo com busca incremental e criação por Enter."""
 
@@ -264,7 +267,7 @@ class HistoryDetailsDialog(QDialog):
         return text or "—"
 
 
-class MainWindow(QMainWindow):
+class MainWindow(DashboardMixin, QMainWindow):
     def __init__(self, db: Database) -> None:
         super().__init__()
         self.db = db
@@ -306,7 +309,20 @@ class MainWindow(QMainWindow):
         self.refresh_timer_state()
         self.refresh_history()
 
+        self.dashboard_tab = QWidget()
+        self.loaded_records = {}
+        self.user_errors = {}
+        self.tabs.insertTab(0, self.dashboard_tab, "Dashboard")
+        self._build_dashboard_tab()
+        self.resize(1180, 760)
+        self.refresh_dashboard()
+        self.tabs.currentChanged.connect(self._refresh_personal_dashboard)
+
         QTimer.singleShot(200, self.ensure_initial_configuration)
+
+    def _refresh_personal_dashboard(self, _index: int) -> None:
+        if self.tabs.currentWidget() == self.dashboard_tab:
+            self.refresh_dashboard()
 
     def _build_timer_tab(self) -> None:
         layout = QVBoxLayout(self.timer_tab)
@@ -1106,6 +1122,8 @@ class MainWindow(QMainWindow):
                 f"Total registrado hoje: {format_duration(valid_total_seconds)}"
             )
         self.update_pending_status()
+        if hasattr(self, "dashboard_tree"):
+            self.refresh_local_dashboard()
 
     def show_history_details(self, row_index: int, _column_index: int = 0) -> None:
         if row_index < 0 or row_index >= len(self.history_rows):

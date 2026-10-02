@@ -12,11 +12,18 @@ Aplicativo Windows simples para registrar tempo por projeto e tipo de atividade.
 - botão **Registrar Tasks** para reenviar tasks pendentes ou com falha manualmente;
 - importação de CSVs históricos e reconstrução idempotente dos CSVs a partir do SQLite;
 - UUID permanente para impedir linhas duplicadas no CSV;
+- dashboard pessoal com dados do SQLite, filtros por data, projeto, tipo, origem e status;
 - histórico diário com filtros de registros ativos, excluídos e todos;
 - exclusão lógica com motivo obrigatório e trilha de auditoria;
 - total de tempo calculado somente com registros ativos;
 - ícone na bandeja do Windows;
 - geração de executável e instalador por arquivos `.bat`.
+
+## Dashboard pessoal
+
+A aba **Dashboard** inclui automaticamente o nome configurado e mostra somente os seus registros do banco local, inclusive pendentes ou com falha de sincronização. Não depende da pasta compartilhada. Os indicadores mostram horas válidas, registros ativos, manuais e excluídos; a árvore organiza usuário → projeto → atividade. Registros excluídos permanecem visíveis, sem entrar nas horas válidas.
+
+O dashboard é atualizado ao abrir a aba, salvar configurações ou alterar os registros. Use **Atualizar** para consultar novamente a data selecionada. A configuração do usuário identifica o perfil local; não constitui autenticação do banco.
 
 ## Arquitetura
 

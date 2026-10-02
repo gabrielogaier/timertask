@@ -24,6 +24,38 @@ class UiSmokeTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.qt_app = QApplication.instance() or QApplication([])
 
+    def test_dashboard_uses_own_local_records_offline_and_refreshes(self):
+        from app import MainWindow
+        from database import Database
+        from test_dashboard_data import record
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            db = Database(root / "timertask.db")
+            db.set_setting("user_name", "Ana")
+            db.add_task_record(record())
+            db.add_task_record(record("Bruno", "private-other"))
+            window = MainWindow(db)
+            tabs = [window.tabs.tabText(i) for i in range(window.tabs.count())]
+            self.assertIn("Dashboard", tabs)
+            self.assertNotIn("Usuários monitorados", tabs)
+            window.date_edit.setDate(QDate(2026, 10, 2))
+            self.assertEqual(window.dashboard_tree.topLevelItemCount(), 1)
+            self.assertEqual(window.dashboard_tree.topLevelItem(0).text(0), "Ana")
+            self.assertEqual(window.total_hours_label.text(), "01:00:00")
+            self.assertEqual(window.manual_label.text(), "1")
+            window.project_filter.setCurrentText("Projeto A")
+            window.origin_filter.setCurrentText("TIMER")
+            self.assertEqual(window.records_label.text(), "0")
+            window.origin_filter.setCurrentText("Todos")
+            db.add_task_record(record(record_id="second"))
+            window.history_date.setDate(QDate(2026, 10, 2))
+            window.refresh_history()
+            self.assertEqual(window.records_label.text(), "2")
+            self.assertEqual(window.project_filter.currentText(), "Projeto A")
+            window.force_quit = True
+            window.close()
+
     def test_timer_tab_refreshes_total_for_current_date(self) -> None:
         from app import MainWindow
         from csv_store import append_record
